@@ -23,12 +23,14 @@ bool alarm = false;
 bool door = false;
 bool buzzer_flag = false;
 bool idle_flag = false;
+bool start_pause_flag = false;
+bool wait_timer = false;
 
 int menu_stat,stop_rst;
 int lastButtonState_1 = 1;
 int lastButtonState_2 = 1;
 int debounce_delay = 50;
-int mode, stp;
+int mode, stp, wait, timer;
 int mode_1_2_3 = 0;
 
 int max_mode = 2;
@@ -102,7 +104,13 @@ ISR(TIMER1_COMPA_vect){
   //generates pulse wave of frequency 1Hz/2 = 0.5kHz (takes two cycles for full wave- toggle high then toggle low)
   if(alarm == true && door == false && motion == false){
     alarm_sec--;
-    Serial.println(alarm_sec);
+    if(start_pause_flag == true){
+      wait++;
+      if(wait == 2){
+        start_pause_flag = false;
+        wait = 0;
+      }
+    }
     digitalWrite(relay,HIGH);
     if(alarm_sec <= 0){
       alarm = false;
@@ -113,20 +121,26 @@ ISR(TIMER1_COMPA_vect){
       //warning_tone(); 
     }
   }
-  //motion time out of 10 sec if motion is detected. 
-  if(motion == true){
-    Serial.print("motion_time_out: "); Serial.println(motion_time_out);
-    motion_time_out++;
-    digitalWrite(relay, LOW);
-    if(digitalRead(motion_sensor) == 1){
-      motion_time_out = 9;
-    }
-    if(motion_time_out > 10 and digitalRead(motion_sensor) == 0){
-      motion_time_out = 0;
-      motion = false; 
-      status_motion_msg = false;
-    }
+  if(wait_timer == true){
+      timer++;
+      if(timer == 1){
+        timer = 0;
+        wait_timer = false;
+      }
   }
+  //motion time out of 10 sec if motion is detected. 
+//  if(motion == true and alarm == true){
+//    motion_time_out++;
+//    digitalWrite(relay, LOW);
+//    if(motion_time_out == 2 and digitalRead(motion_sensor) == 1){
+//      motion_time_out = 1;
+//    }
+//    if(motion_time_out > 3 and digitalRead(motion_sensor) == 0){
+//      motion_time_out = 0;
+//      motion = false; 
+//      status_motion_msg = false;
+//    }
+//  }
 }
 
 void loop(){
@@ -142,7 +156,7 @@ void loop(){
       button_loop();
       door_loop();
       if(buzzer_flag == true){
-        warning_tone();
+        warning_tone(); 
         buzzer_flag = false;
       } 
     }
@@ -151,36 +165,48 @@ void loop(){
         idle_flag = true;
       }
       door_loop();
-      //Serial.println(stp);
       set_alarm_loop();
       delay(10); 
       j++;
       //Serial.println(j);
     }
   }
-  
   while(alarm == true){
     status_door_msg = 1;
     door_loop();
-    //Serial.println(stp);
+    if(motion == true){
+      display_wait();
+       while(digitalRead(start_stop_reset)){
+        delay(debounce_delay);
+        if(digitalRead(start_stop_reset)==0){
+          delay(debounce_delay);
+          start_pause_flag = true;
+          select_tone();
+          break;
+        }
+      }
+    }
     reset_timer();
     show_time_alarm();
-    if(mode_1_2_3 == 0){
-      display_M1("Mode 1:");    
+    if (motion == false){
+      if(mode_1_2_3 == 0){
+        display_M1("Mode 1:");    
+      }
+      if(mode_1_2_3 == 1){
+        display_M1("Mode 2:");
+      }
+      if(mode_1_2_3 == 2){
+        display_M1("Mode 3:");
+      }
     }
-    if(mode_1_2_3 == 1){
-      display_M1("Mode 2:");
-    }
-    if(mode_1_2_3 == 2){
-      display_M1("Mode 3:");
-    }
+    
     //delay(50);
   } 
 }
 
 void reset_timer(){
     button_loop();
-    if(stp==1){
+    if(stp==1 and start_pause_flag == false){
       stp = 0;
       alarm_sec = 0;
       sec = 0;
@@ -192,7 +218,6 @@ void reset_timer(){
 }
 
 void set_alarm_loop(){
-
   if(idle_flag == true){
     display_wait();
   }
@@ -204,7 +229,7 @@ void set_alarm_loop(){
       if(mode_1_2_3>max_mode){
          mode_1_2_3 = 0;
       }
-       select_tone();
+      select_tone();
     }
     if(mode_1_2_3 == 0){
       sec = 60*mode_1_time;
@@ -218,13 +243,19 @@ void set_alarm_loop(){
       sec = 60*mode_3_time;
       display_M("Mode 3:");   
     }  
-  
-    if(stp==1 && sec>0 && door == false){
-      stp = 0;
-      alarm = true;
-      alarm_sec = sec;
-      digitalWrite(relay,HIGH);
-      select_tone();
+    if(stp==1 && sec>0){
+      //added new
+      if(motion == true or door ==true){
+        hazard_tone();
+        wait_timer = true;
+      }
+      if(wait_timer == false){
+        alarm = true;
+        stp = 0;
+        alarm_sec = sec;
+        digitalWrite(relay,HIGH);
+        select_tone();
+      }
     }
   } 
 }
@@ -242,7 +273,7 @@ void button_loop(){
     }
     else mode = 0;
     delay(debounce_delay);
-    // select_tone(); 
+    select_tone(); 
   }
   
   lastButtonState_1 = menu_stat;
@@ -283,9 +314,20 @@ void warning_tone(){
   digitalWrite(buzzer,LOW);
 }
 
+void hazard_tone(){
+  digitalWrite(buzzer,HIGH);
+  delay(100);
+  digitalWrite(buzzer,LOW);
+  delay(100);
+  digitalWrite(buzzer,HIGH);
+  delay(100);
+  digitalWrite(buzzer,LOW);
+  delay(100);
+}
+
 
 void display_wait(){
-  if( lo < 200 && status_door_msg == 0 && status_motion_msg == false){
+  if( lo < 200 && status_door_msg == 0 && alarm == false){
     display.clearDisplay();
     display.setRotation(rotatetext);
     display.setTextSize(2);
@@ -298,7 +340,7 @@ void display_wait(){
     display.print("Select Mode");
     display.display();
   }
-  else if( 200 < lo < 280 && status_door_msg == 0 && status_motion_msg == false){
+  else if( 200 < lo < 280 && status_door_msg == 0 and alarm == false){
     display.clearDisplay();
     display.setRotation(rotatetext);
     display.setTextSize(2);
@@ -315,7 +357,7 @@ void display_wait(){
     display.print("BANGLADESH LTD");
     display.display();
   }
-  if(status_door_msg == 1 && status_motion_msg == false){
+  if(status_door_msg == 1 and alarm == false){
     display.clearDisplay();
     display.setRotation(rotatetext);
     display.setTextSize(2);
@@ -329,7 +371,7 @@ void display_wait(){
     display.print("Open The Door");
     display.display();
   }
-  if(status_motion_msg){
+  if(motion == true and alarm == true){
     display.clearDisplay();
     display.setRotation(rotatetext);
     display.setTextSize(2);
@@ -349,9 +391,7 @@ void display_wait(){
   lo++; 
 }
 
-
 void display_M(char*mode_name){
-  if(status_motion_msg == false){
     show_time_No_alarm();
     display.clearDisplay();
     display.setRotation(rotatetext);
@@ -377,11 +417,9 @@ void display_M(char*mode_name){
     else{display.print(show_sec);}
     
     display.display();
-  }
 }
 
 void display_M1(char*mode_name){
-  if(status_motion_msg == false){
     show_time_No_alarm();
     display.clearDisplay();
     display.setRotation(rotatetext);
@@ -408,22 +446,21 @@ void display_M1(char*mode_name){
     else{display.print(f_show_sec1,0);}
     
     display.display();
-  }
 }
 
 
 void door_loop(){
   status_door = digitalRead(interruptPin);
   motion_sensor_value = digitalRead(motion_sensor);
-  //Serial.println(status_door);
-  if(status_door == 0 and motion_sensor_value == 0 and status_motion_msg == false){  
+//  Serial.print("motion sensor value:"); Serial.print(motion_sensor_value);
+//  Serial.print(status_door);
+  if(status_door == 0 and motion_sensor_value == 0){ 
     door = false;
     motion = false;
   }
   else {
     motion = true;
     status_motion_msg = true;
-    display_wait();
     door = true; 
     digitalWrite(relay,LOW);
     status_door_msg = 0; 
