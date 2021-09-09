@@ -106,7 +106,7 @@ ISR(TIMER1_COMPA_vect){
     alarm_sec--;
     if(start_pause_flag == true){
       wait++;
-      if(wait == 2){
+      if(wait == 3){
         start_pause_flag = false;
         wait = 0;
       }
