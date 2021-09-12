@@ -32,6 +32,7 @@ int lastButtonState_2 = 1;
 int debounce_delay = 50;
 int mode, stp, wait, timer;
 int mode_1_2_3 = 0;
+int last_sec;
 
 int max_mode = 2;
 
@@ -106,10 +107,6 @@ ISR(TIMER1_COMPA_vect){
     alarm_sec--;
     if(start_pause_flag == true){
       wait++;
-      if(wait == 3){
-        start_pause_flag = false;
-        wait = 0;
-      }
     }
     digitalWrite(relay,HIGH);
     if(alarm_sec <= 0){
@@ -174,19 +171,22 @@ void loop(){
   while(alarm == true){
     status_door_msg = 1;
     door_loop();
-    if(motion == true){
+    if(motion == true or door == true){
       display_wait();
-       while(digitalRead(start_stop_reset)){
-        delay(debounce_delay);
+      while(digitalRead(start_stop_reset)){
         if(digitalRead(start_stop_reset)==0){
           delay(debounce_delay);
           start_pause_flag = true;
           select_tone();
+          wait = 0;
           break;
         }
       }
     }
-    reset_timer();
+    else if( wait >= 3){
+      start_pause_flag = false;
+      reset_timer();
+    }
     show_time_alarm();
     if (motion == false){
       if(mode_1_2_3 == 0){
@@ -206,7 +206,8 @@ void loop(){
 
 void reset_timer(){
     button_loop();
-    if(stp==1 and start_pause_flag == false){
+    if(stp==1){
+      last_sec = 0;
       stp = 0;
       alarm_sec = 0;
       sec = 0;
@@ -376,11 +377,14 @@ void display_wait(){
     display.setRotation(rotatetext);
     display.setTextSize(2);
     display.setTextColor(BLACK);
-    display.setCursor(8,10);
+    display.setCursor(8,0);
     display.print("Motion");
     display.setTextSize(1);
-    display.setCursor(16,32);
+    display.setCursor(16,18);
     display.print("detected!!");
+    display.setTextSize(1);
+    display.setCursor(0,35);
+    display.print("hold set/reset");
     display.display();
   }
   
